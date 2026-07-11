@@ -67,7 +67,8 @@ module axil_ram #
     input  wire                   s_axil_rready
 );
 
-parameter VALID_ADDR_WIDTH = ADDR_WIDTH - $clog2(STRB_WIDTH);
+//parameter VALID_ADDR_WIDTH = ADDR_WIDTH - $clog2(STRB_WIDTH);
+parameter VALID_ADDR_WIDTH = ADDR_WIDTH;
 parameter WORD_WIDTH = STRB_WIDTH;
 parameter WORD_SIZE = DATA_WIDTH/WORD_WIDTH;
 
@@ -84,7 +85,7 @@ reg [DATA_WIDTH-1:0] s_axil_rdata_pipe_reg = {DATA_WIDTH{1'b0}};
 reg s_axil_rvalid_pipe_reg = 1'b0;
 
 // (* RAM_STYLE="BLOCK" *)
-reg [DATA_WIDTH-1:0] mem[(2**VALID_ADDR_WIDTH)-1:0];
+reg [7:0] mem[(2**VALID_ADDR_WIDTH)-1:0];
 
 wire [VALID_ADDR_WIDTH-1:0] s_axil_awaddr_valid = s_axil_awaddr >> (ADDR_WIDTH - VALID_ADDR_WIDTH);
 wire [VALID_ADDR_WIDTH-1:0] s_axil_araddr_valid = s_axil_araddr >> (ADDR_WIDTH - VALID_ADDR_WIDTH);
@@ -133,7 +134,7 @@ always @(posedge clk) begin
 
     for (i = 0; i < WORD_WIDTH; i = i + 1) begin
         if (mem_wr_en && s_axil_wstrb[i]) begin
-            mem[s_axil_awaddr_valid][WORD_SIZE*i +: WORD_SIZE] <= s_axil_wdata[WORD_SIZE*i +: WORD_SIZE];
+            mem[s_axil_awaddr_valid + i] <= s_axil_wdata[WORD_SIZE*i +: WORD_SIZE];
         end
     end
 
@@ -163,7 +164,9 @@ always @(posedge clk) begin
     s_axil_rvalid_reg <= s_axil_rvalid_next;
 
     if (mem_rd_en) begin
-        s_axil_rdata_reg <= mem[s_axil_araddr_valid];
+	for (i = 0; i < WORD_WIDTH; i = i + 1) begin
+        	s_axil_rdata_reg[WORD_SIZE*i +: WORD_SIZE] <= mem[s_axil_araddr_valid + i];
+    	end
     end
 
     if (!s_axil_rvalid_pipe_reg || s_axil_rready) begin

@@ -85,7 +85,8 @@ module axi_ram #
     input  wire                   s_axi_rready
 );
 
-parameter VALID_ADDR_WIDTH = ADDR_WIDTH - $clog2(STRB_WIDTH);
+//parameter VALID_ADDR_WIDTH = ADDR_WIDTH - $clog2(STRB_WIDTH);
+parameter VALID_ADDR_WIDTH = ADDR_WIDTH;
 parameter WORD_WIDTH = STRB_WIDTH;
 parameter WORD_SIZE = DATA_WIDTH/WORD_WIDTH;
 
@@ -144,7 +145,7 @@ reg s_axi_rlast_pipe_reg = 1'b0;
 reg s_axi_rvalid_pipe_reg = 1'b0;
 
 // (* RAM_STYLE="BLOCK" *)
-reg [DATA_WIDTH-1:0] mem[(2**VALID_ADDR_WIDTH)-1:0];
+reg [WORD_SIZE-1:0] mem[(2**VALID_ADDR_WIDTH)-1:0];
 
 wire [VALID_ADDR_WIDTH-1:0] s_axi_awaddr_valid = s_axi_awaddr >> (ADDR_WIDTH - VALID_ADDR_WIDTH);
 wire [VALID_ADDR_WIDTH-1:0] s_axi_araddr_valid = s_axi_araddr >> (ADDR_WIDTH - VALID_ADDR_WIDTH);
@@ -160,6 +161,11 @@ assign s_axi_arready = s_axi_arready_reg;
 assign s_axi_rid = PIPELINE_OUTPUT ? s_axi_rid_pipe_reg : s_axi_rid_reg;
 assign s_axi_rdata = PIPELINE_OUTPUT ? s_axi_rdata_pipe_reg : s_axi_rdata_reg;
 assign s_axi_rresp = 2'b00;
+assign s_axi_rlast = PIPELINE_OUTPUT ? s_axi_rlast_pipe_reg : s_axi_rlast_reg;
+// Force rvalid=0 in IDLE state to prevent the trailing rvalid cycle
+// after RLAST.  The registered rvalid stays high for one extra cycle
+// (standard AXI behavior), but the bus module may already have issued
+// a new AR and will capture this stale data as beat 0 of the new refill.
 assign s_axi_rlast = PIPELINE_OUTPUT ? s_axi_rlast_pipe_reg : s_axi_rlast_reg;
 assign s_axi_rvalid = PIPELINE_OUTPUT ? s_axi_rvalid_pipe_reg : s_axi_rvalid_reg;
 
@@ -264,7 +270,7 @@ always @(posedge clk) begin
 
     for (i = 0; i < WORD_WIDTH; i = i + 1) begin
         if (mem_wr_en & s_axi_wstrb[i]) begin
-            mem[write_addr_valid][WORD_SIZE*i +: WORD_SIZE] <= s_axi_wdata[WORD_SIZE*i +: WORD_SIZE];
+            mem[write_addr_valid + i] <= s_axi_wdata[WORD_SIZE*i +: WORD_SIZE];
         end
     end
 
@@ -295,8 +301,8 @@ always @* begin
     s_axi_arready_next = 1'b0;
 
     case (read_state_reg)
-        READ_STATE_IDLE: begin
-            s_axi_arready_next = 1'b1;
+    READ_STATE_IDLE: begin
+        s_axi_arready_next = 1'b1;
 
             if (s_axi_arready && s_axi_arvalid) begin
                 read_id_next = s_axi_arid;
@@ -349,7 +355,9 @@ always @(posedge clk) begin
     s_axi_rvalid_reg <= s_axi_rvalid_next;
 
     if (mem_rd_en) begin
-        s_axi_rdata_reg <= mem[read_addr_valid];
+        for (i = 0; i < WORD_WIDTH; i = i + 1) begin
+                s_axi_rdata_reg[WORD_SIZE*i +: WORD_SIZE] <= mem[read_addr_valid + i];
+        end
     end
 
     if (!s_axi_rvalid_pipe_reg || s_axi_rready) begin
