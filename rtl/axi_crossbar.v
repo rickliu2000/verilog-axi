@@ -249,7 +249,18 @@ axi_crossbar_wr #(
     .M_SECURE(M_SECURE),
     .S_AW_REG_TYPE(S_AW_REG_TYPE),
     .S_W_REG_TYPE (S_W_REG_TYPE),
-    .S_B_REG_TYPE (S_B_REG_TYPE)
+    .S_B_REG_TYPE (S_B_REG_TYPE),
+    // Forward the master-side register types to axi_crossbar_wr.  Without
+    // these the M-side AW/W register types are stuck at the wr module's
+    // defaults (M_AW=1 simple buffer, M_W=2 skid buffer), which let a
+    // later single-beat store's W beat overtake an earlier store's AW at
+    // the slave port (the workqueue per-cpu slot store committed into the
+    // previous transaction's armed slot -> reload 0 -> NULL-deref TLB
+    // loop).  Bypassing the M-side W skid (W_REG_TYPE=0) on the boot/main
+    // RAM ports keeps at most ONE W beat outstanding per port, so W can
+    // never get ahead of its own AW, while the UART port keeps its skid.
+    .M_AW_REG_TYPE(M_AW_REG_TYPE),
+    .M_W_REG_TYPE (M_W_REG_TYPE)
 )
 axi_crossbar_wr_inst (
     .clk(clk),
